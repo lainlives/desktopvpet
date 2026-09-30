@@ -1,3 +1,4 @@
+// app.cpp: wires window, character, pet, dialogue and menu together.
 #include "app.hpp"
 
 #include <algorithm>
@@ -12,7 +13,7 @@
 
 #include "platform_clickthrough.hpp"
 
-namespace de {
+namespace dvp {
 
 namespace {
 constexpr float kShapeInterval = 0.05f;  // update silhouette at ~20 Hz
@@ -36,20 +37,20 @@ AnimRole role_for_pet(const Pet &pet) {
 
 bool App::init(const std::string &asset_root, const std::string &character_name) {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
-        DE_ERROR("SDL_Init failed: %s", SDL_GetError());
+        DVP_ERROR("SDL_Init failed: %s", SDL_GetError());
         return false;
     }
-    SDL_SetAppMetadata("DesktopEcto", "0.1.0", "dev.desktopecto");
+    SDL_SetAppMetadata("DesktopVPet", "0.1.0", "dev.desktopvpet");
 
     const std::string root = resolve_asset_root(asset_root);
     if (root.empty()) {
-        DE_ERROR("could not locate the assets directory (pass it as argv[1])");
+        DVP_ERROR("could not locate the assets directory (pass it as argv[1])");
         return false;
     }
-    DE_INFO("asset root: %s", root.c_str());
+    DVP_INFO("asset root: %s", root.c_str());
 
     WindowConfig cfg;
-    cfg.title = "DesktopEcto";
+    cfg.title = "DesktopVPet";
 
     // Span the union of all displays so the pet can roam across monitors
     // (works on X11; Wayland composites a single surface per output).
@@ -97,13 +98,17 @@ bool App::init(const std::string &asset_root, const std::string &character_name)
     } else if (input_mode_ == platform::InputMode::ShapeMask) {
         mode_name = "renderer shape mask";
     }
-    DE_INFO("click-through mode: %s", mode_name);
+    DVP_INFO("click-through mode: %s", mode_name);
 
     const std::string char_dir = root + "/characters/" + character_name;
     if (!character_.load(window_.renderer(), char_dir)) {
-        DE_ERROR("failed to load character from '%s'", char_dir.c_str());
+        DVP_ERROR("failed to load character from '%s'", char_dir.c_str());
         return false;
     }
+
+    // Window title reflects the loaded character (e.g. "Desktop Ecto").
+    const std::string window_title = "Desktop " + character_.name();
+    SDL_SetWindowTitle(window_.handle(), window_title.c_str());
 
     pet_.set_frame_size(character_.frame_width(), character_.frame_height());
     pet_.set_position(static_cast<float>(cfg.width) * 0.5f,
@@ -114,7 +119,7 @@ bool App::init(const std::string &asset_root, const std::string &character_name)
 
     const std::string font_path = root + "/" + character_.font();
     if (!ui_text_.load(window_.renderer(), font_path, character_.font_size())) {
-        DE_WARN("UI text disabled: could not load font '%s'", font_path.c_str());
+        DVP_WARN("UI text disabled: could not load font '%s'", font_path.c_str());
     }
 
     menu_.set_items({
@@ -128,10 +133,10 @@ bool App::init(const std::string &asset_root, const std::string &character_name)
     });
     window_.set_sorting(sort_mode_);
 
-    no_shape_ = std::getenv("DE_NO_SHAPE") != nullptr;
-    selftest_ = std::getenv("DE_SELFTEST") != nullptr;
-    force_talk_ = std::getenv("DE_TALK") != nullptr;
-    if (const char *exit_after = std::getenv("DE_EXIT_AFTER")) {
+    no_shape_ = std::getenv("DVP_NO_SHAPE") != nullptr;
+    selftest_ = std::getenv("DVP_SELFTEST") != nullptr;
+    force_talk_ = std::getenv("DVP_TALK") != nullptr;
+    if (const char *exit_after = std::getenv("DVP_EXIT_AFTER")) {
         exit_after_ = std::strtof(exit_after, nullptr);
     }
 
@@ -186,7 +191,7 @@ void App::run_selftest() {
     SDL_Texture *target = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
                                             SDL_TEXTUREACCESS_TARGET, kSize, kSize);
     if (!target) {
-        DE_ERROR("selftest: could not create render target: %s", SDL_GetError());
+        DVP_ERROR("selftest: could not create render target: %s", SDL_GetError());
         return;
     }
     SDL_SetRenderTarget(renderer, target);
@@ -220,14 +225,15 @@ void App::run_selftest() {
             SDL_DestroySurface(argb);
         }
     } else {
-        DE_ERROR("selftest: RenderReadPixels failed: %s", SDL_GetError());
+        DVP_ERROR("selftest: RenderReadPixels failed: %s", SDL_GetError());
     }
     SDL_SetRenderTarget(renderer, nullptr);
     SDL_DestroyTexture(target);
-    DE_INFO("selftest: %d opaque pixels rendered for animation '%s' (font=%s)", opaque,
+    DVP_INFO("selftest: %d opaque pixels rendered for animation '%s' (font=%s)", opaque,
             character_.current_animation().c_str(), ui_text_.valid() ? "yes" : "no");
 }
 
+// Routes SDL events: quit/keys, mouse (menu first, then pet drag), resizes.
 void App::handle_event(const SDL_Event &event) {
     switch (event.type) {
         case SDL_EVENT_QUIT:
@@ -325,6 +331,7 @@ void App::apply_sort(int id) {
     window_.set_sorting(sort_mode_);
 }
 
+// One simulation step: input, pet physics, animation role, dialogue, silhouette.
 void App::update(float dt) {
     if (dt <= 0.0f) {
         dt = 1.0f / 60.0f;
@@ -349,7 +356,7 @@ void App::update(float dt) {
     mouse_pressed_ = false;
     mouse_released_ = false;
 
-    if (const char *forced = std::getenv("DE_ANIM")) {
+    if (const char *forced = std::getenv("DVP_ANIM")) {
         if (character_.has_animation(forced)) {
             character_.play(forced);
         }
@@ -388,6 +395,7 @@ void App::update(float dt) {
     }
 }
 
+// Clears to transparent, draws the pet + dialogue + menu, then presents.
 void App::render() {
     SDL_Renderer *renderer = window_.renderer();
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
@@ -494,8 +502,8 @@ void App::update_click_through(float dt) {
     }
 
     shape_native_ = platform::apply_window_shape(window_.handle(), shape_surface_, content);
-    if (std::getenv("DE_DEBUG_SHAPE")) {
-        DE_INFO("shape: anim=%s frame=%d native=%d content=%d,%d %dx%d",
+    if (std::getenv("DVP_DEBUG_SHAPE")) {
+        DVP_INFO("shape: anim=%s frame=%d native=%d content=%d,%d %dx%d",
                 character_.current_animation().c_str(), frame, shape_native_ ? 1 : 0,
                 content.x, content.y, content.w, content.h);
     }
@@ -522,4 +530,4 @@ void App::shutdown() {
     SDL_Quit();
 }
 
-}  // namespace de
+}  // namespace dvp

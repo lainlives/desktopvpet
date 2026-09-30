@@ -1,3 +1,4 @@
+// texture.cpp: texture loading via SDL_image and alpha sampling for hit-tests.
 #include "texture.hpp"
 
 #include <SDL3_image/SDL_image.h>
@@ -6,7 +7,7 @@
 
 #include "log.hpp"
 
-namespace de {
+namespace dvp {
 
 Texture::~Texture() { reset(); }
 
@@ -41,20 +42,20 @@ bool Texture::load(SDL_Renderer *renderer, const std::string &path) {
 
     SDL_Surface *loaded = IMG_Load(path.c_str());
     if (!loaded) {
-        DE_ERROR("failed to load image '%s': %s", path.c_str(), SDL_GetError());
+        DVP_ERROR("failed to load image '%s': %s", path.c_str(), SDL_GetError());
         return false;
     }
 
     surface_ = SDL_ConvertSurface(loaded, SDL_PIXELFORMAT_RGBA32);
     SDL_DestroySurface(loaded);
     if (!surface_) {
-        DE_ERROR("failed to convert '%s': %s", path.c_str(), SDL_GetError());
+        DVP_ERROR("failed to convert '%s': %s", path.c_str(), SDL_GetError());
         return false;
     }
 
     texture_ = SDL_CreateTextureFromSurface(renderer, surface_);
     if (!texture_) {
-        DE_ERROR("failed to create texture for '%s': %s", path.c_str(), SDL_GetError());
+        DVP_ERROR("failed to create texture for '%s': %s", path.c_str(), SDL_GetError());
         reset();
         return false;
     }
@@ -90,4 +91,4 @@ Uint8 Texture::alpha_at(int x, int y) const {
     return pixels[y * pitch + x * 4 + 3];
 }
 
-}  // namespace de
+}  // namespace dvp

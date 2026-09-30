@@ -1,6 +1,7 @@
+// dialogue.cpp: dialogue fade/auto-hide logic and bubble rendering.
 #include "dialogue.hpp"
 
-namespace de {
+namespace dvp {
 
 void Dialogue::set_strings(std::vector<std::string> strings) {
     strings_ = std::move(strings);
@@ -95,4 +96,4 @@ void Dialogue::render(SDL_Renderer *renderer, const TextRenderer &text, float cx
     text.draw(renderer, current_, text_rect, text_color);
 }
 
-}  // namespace de
+}  // namespace dvp

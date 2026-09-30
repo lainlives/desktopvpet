@@ -1,9 +1,10 @@
+// animator.cpp: animator update logic (looping and one-shot clips).
 #include "animator.hpp"
 
 #include <algorithm>
 #include <cmath>
 
-namespace de {
+namespace dvp {
 
 namespace {
 SDL_Rect empty_rect() { return SDL_Rect{0, 0, 0, 0}; }
@@ -75,4 +76,4 @@ SDL_Rect Animator::frame_rect() const {
     return animation_->frames[idx];
 }
 
-}  // namespace de
+}  // namespace dvp

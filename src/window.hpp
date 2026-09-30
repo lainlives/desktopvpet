@@ -1,15 +1,16 @@
+// window.hpp: transparent borderless overlay window + renderer.
 #pragma once
 
 #include <SDL3/SDL.h>
 
 #include <string>
 
-namespace de {
+namespace dvp {
 
 enum class WindowSort { Disabled, Top, Bottom };
 
 struct WindowConfig {
-    std::string title = "DesktopEcto";
+    std::string title = "DesktopVPet";
     int width = 1280;
     int height = 720;
     bool borderless = true;
@@ -53,4 +54,4 @@ private:
     SDL_Renderer *renderer_ = nullptr;
 };
 
-}  // namespace de
+}  // namespace dvp

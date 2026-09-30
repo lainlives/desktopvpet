@@ -1,3 +1,4 @@
+// dialogue.hpp: speech-bubble fade state and panel drawing.
 #pragma once
 
 #include <SDL3/SDL.h>
@@ -8,7 +9,7 @@
 
 #include "text_renderer.hpp"
 
-namespace de {
+namespace dvp {
 
 // Speech-bubble state machine ported from DialogueBox.cs: fade in, hold ~3s,
 // fade out. Text rendering is intentionally abstracted; the panel is drawn
@@ -47,4 +48,4 @@ private:
     std::mt19937 rng_{std::random_device{}()};
 };
 
-}  // namespace de
+}  // namespace dvp

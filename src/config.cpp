@@ -1,3 +1,4 @@
+// config.cpp: recursive-descent JSON parser and typed accessors.
 #include "config.hpp"
 
 #include <cctype>
@@ -5,7 +6,7 @@
 #include <fstream>
 #include <sstream>
 
-namespace de {
+namespace dvp {
 
 const Json *Json::find(std::string_view key) const {
     if (type != Type::Object) {
@@ -52,6 +53,8 @@ bool Json::get_bool(std::string_view key, bool fallback) const {
 
 namespace {
 
+// Recursive-descent JSON parser. Any failure sets the error string and
+// leaves the result as a Null value.
 class Parser {
 public:
     Parser(std::string_view text, std::string *error) : src_(text), error_(error) {}
@@ -181,6 +184,7 @@ private:
         return out;
     }
 
+    // Decodes JSON escapes (including \uXXXX) into UTF-8.
     std::string parse_string() {
         std::string out;
         advance();  // opening quote
@@ -333,4 +337,4 @@ Json load_json_file(const std::string &path, std::string *error) {
     return parse_json(buffer.str(), error);
 }
 
-}  // namespace de
+}  // namespace dvp

@@ -1,4 +1,4 @@
-# DesktopEcto (C++/SDL3 port)
+# DesktopVPet (C++/SDL3 port)
 
 A port of the Godot/C# "Desktop Buddy" pet (`DesktopEcto/`) to C++ with SDL3.
 The pet is a transparent, borderless, always-on-top overlay that walks, dances,
@@ -12,17 +12,17 @@ click-through hook. See [Status](#status--roadmap) for what is not done yet.
 ## Layout
 
 ```
-CMakeLists.txt          # builds vendored SDL3 + SDL3_image, then desktop_ecto
+CMakeLists.txt          # builds vendored SDL3 + SDL3_image, then desktop_vpet
 src/
   main.cpp              # arg parsing, app lifetime
   app.{hpp,cpp}         # SDL init, main loop, event handling, render, silhouette
   window.{hpp,cpp}      # transparent/borderless window + renderer, SDL_SetWindowShape
-  platform_clickthrough.{hpp,cpp}  # native input regions (X11 / Win32 / macOS)
+  platform_clickthrough.{hpp,cpp}  # input regions (X11 / Wayland / Win32 / macOS)
   config.{hpp,cpp}      # tiny dependency-free JSON reader (character manifests)
   texture.{hpp,cpp}     # RAII SDL_Texture + CPU surface for alpha hit-tests
   animation.hpp         # Animation clip (source image + frame rects + fps + loop)
   animator.{hpp,cpp}    # playback
-  character.{hpp,cpp}   # manifest -> animation set; swappable per folder
+  character.{hpp,cpp}   # manifest -> animation set + semantic roles; swappable
   pet.{hpp,cpp}         # state machine + DIY physics (gravity, floor, righting)
   dialogue.{hpp,cpp}    # speech-bubble fade state machine + panel
   menu.{hpp,cpp}        # popup menu (Exit + Force-sort submenu)
@@ -31,6 +31,7 @@ src/
 assets/characters/ecto/ # runtime character (generated sheets + character.json)
 assets/fonts/           # bundled DejaVuSans.ttf for dialogue/menu text
 tools/pack_sprites.py   # packs source frames into one sheet per activity
+docs/CHARACTERS.md      # character file / manifest / role reference
 DesktopEcto/            # original Godot project (reference, untouched)
 sdl/SDL, sdl/SDL_image, sdl/SDL_ttf   # git submodules
 ```
@@ -65,7 +66,7 @@ cmake --build build
 The output is self-contained in `build/bin/`:
 
 ```
-build/bin/desktop_ecto    # single binary (SDL statically linked by default)
+build/bin/desktop_vpet    # single binary (SDL statically linked by default)
 build/bin/assets/...
 ```
 
@@ -73,9 +74,9 @@ Useful options:
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `-DDESKTOPECTO_USE_SYSTEM_SDL=ON` | `OFF` | Link system SDL3/SDL3_image instead of the submodules |
-| `-DDESKTOPECTO_SDL_SHARED=ON` | `OFF` | Build/link SDL as shared libraries (staged next to the exe) |
-| `-DDESKTOPECTO_COPY_ASSETS=OFF` | `ON` | Don't copy `assets/` next to the executable |
+| `-DDESKTOPVPET_USE_SYSTEM_SDL=ON` | `OFF` | Link system SDL3/SDL3_image instead of the submodules |
+| `-DDESKTOPVPET_SDL_SHARED=ON` | `OFF` | Build/link SDL as shared libraries (staged next to the exe) |
+| `-DDESKTOPVPET_COPY_ASSETS=OFF` | `ON` | Don't copy `assets/` next to the executable |
 
 ### Windows (MinGW-w64 cross build)
 
@@ -83,9 +84,9 @@ Useful options:
 git -C sdl/SDL_ttf submodule update --init --depth 1 external/freetype
 cmake -S . -B build-mingw -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/mingw-w64-x86_64.cmake \
-  -DDESKTOPECTO_SDL_SHARED=ON
+  -DDESKTOPVPET_SDL_SHARED=ON
 cmake --build build-mingw
-# -> build-mingw/bin/desktop_ecto.exe + SDL3*.dll + assets/
+# -> build-mingw/bin/desktop_vpet.exe + SDL3*.dll + assets/
 ```
 
 The MinGW C/C++ runtime is linked statically (`-static-libgcc -static-libstdc++
@@ -94,13 +95,13 @@ use SDL_ttf's vendored FreeType (see the extra submodule step). Native MSVC or
 MinGW builds work from the same project; the Win32 click-through uses
 `SetWindowRgn` and "send to bottom" uses `SetWindowPos(HWND_BOTTOM)`.
 
-The Windows binary has been smoke-tested under Wine (`DE_SELFTEST=1` renders the
+The Windows binary has been smoke-tested under Wine (`DVP_SELFTEST=1` renders the
 pet, dialogue text and menu).
 
 ## Run
 
 ```sh
-./build/bin/desktop_ecto [asset_root] [character]
+./build/bin/desktop_vpet [asset_root] [character]
 # defaults: asset_root=auto-detected, character=ecto
 ```
 
@@ -109,91 +110,51 @@ pet, dialogue text and menu).
   always-on-top; `Ctrl+C` quits.
 - Environment:
   - `SDL_VIDEODRIVER=x11` (or `wayland`) to force a backend.
-  - `DE_NO_SHAPE=1` disables silhouette/click-through updates.
-  - `DE_SHAPE=1` forces the SDL renderer shape-mask path (see below).
-  - `DE_ANIM=<name>` forces a single animation (e.g. `dancydance`) for testing.
-  - `DE_DEBUG_SHAPE=1` logs each silhouette update (anim/frame/position).
-  - `DE_DEBUG_ROLE=1` logs every semantic role -> clip change.
-  - `DE_TALK=1` keeps a dialogue bubble active (to exercise the talk role).
-  - `DE_SELFTEST=1` renders one frame offscreen, logs the opaque pixel count and exits.
-  - `DE_EXIT_AFTER=<seconds>` quits automatically (used by tests).
+  - `DVP_NO_SHAPE=1` disables silhouette/click-through updates.
+  - `DVP_SHAPE=1` forces the SDL renderer shape-mask path (see below).
+  - `DVP_ANIM=<name>` forces a single animation (e.g. `dancydance`) for testing.
+  - `DVP_DEBUG_SHAPE=1` logs each silhouette update (anim/frame/position).
+  - `DVP_DEBUG_ROLE=1` logs every semantic role -> clip change.
+  - `DVP_TALK=1` keeps a dialogue bubble active (to exercise the talk role).
+  - `DVP_SELFTEST=1` renders one frame offscreen, logs the opaque pixel count and exits.
+  - `DVP_EXIT_AFTER=<seconds>` quits automatically (used by tests).
 
 ## Characters & sprite sheets
 
-A character is a folder (`assets/characters/<name>/`) containing
-`character.json` and one or more sheets. **Each animation can point at its own
-sheet** ("one sheet per activity"), share an atlas, or use loose images. Because
-the runtime auto-detects a horizontal strip (frame height = image height,
-`frames = width / frame_height`), a manifest entry can be as small as:
+A character is a folder (`assets/characters/<name>/`) containing `character.json`
+and one or more sheets. Animations can each point at their own sheet (one sheet
+per activity), share an atlas, or use loose images, and an `actions` block maps
+semantic roles (`idle`, `walk`, `clicked`, `fall_impact`, `spinny`, `dance`,
+`talk`) to clips with weighted variants and sensible fallbacks.
+
+**See [`docs/CHARACTERS.md`](docs/CHARACTERS.md) for the full format, the role
+table, the authoring workflow (`sources.json` + `tools/pack_sprites.py`) and an
+example.** Quick reference:
 
 ```json
-{ "animations": {
-    "idle":       { "image": "ecto_idle.png",       "fps": 5,  "loop": true },
-    "dancydance": { "image": "ecto_dancydance.png", "fps": 10, "loop": true }
-} }
+{
+  "name": "Ecto",
+  "frame_width": 112, "frame_height": 112,
+  "dialogue": ["im normal im normal im normal"],
+  "actions": {
+    "idle": [ { "animation": "idle", "weight": 4 },
+              { "animation": "idle_look", "weight": 1 } ],
+    "walk": { "animation": "walk" },
+    "clicked": { "animation": "hover" },
+    "talk": { "animation": "hover" }
+  },
+  "animations": {
+    "idle":       { "image": "ecto_idle.png",       "fps": 5 },
+    "dancydance": { "image": "ecto_dancydance.png", "fps": 10 }
+  }
+}
 ```
 
-Manifest schema (all optional except `animations`):
-
-| Key | Scope | Meaning |
-| --- | --- | --- |
-| `name` | top | Display name |
-| `frame_width`, `frame_height` | top / per animation | Frame size; defaults to image height (square) |
-| `sheet` | top | Default image for animations that omit `image` |
-| `dialogue` | top | Array of speech-bubble strings |
-| `font`, `font_size` | top | Font path relative to the asset root and point size (default `fonts/DejaVuSans.ttf`, 15) |
-| `animations.<name>.image` | per animation | Sheet/filename for this activity |
-| `animations.<name>.fps`, `.loop` | per animation | Playback |
-| `animations.<name>.frames` | per animation | Number (count, laid out from `row`/`col`) or an array of `{x,y,w,h}` rects |
-| `animations.<name>.row`, `.col` | per animation | Grid origin when `frames` is a count |
-
-To author a character, edit the loose frames in `src/`, update `sources.json`,
-then regenerate the sheets and manifest:
+Regenerate a character's sheets and manifest with:
 
 ```sh
 python3 tools/pack_sprites.py assets/characters/ecto
 ```
-
-`sources.json` per animation supports `images` (one file per frame), `atlas`
-(`cols`/`frames`/`start` grid crop) or `rects`. It is copied verbatim (minus the
-authoring keys) into `character.json`, so `dialogue`, `font`, `font_size` and
-`actions` live there too.
-
-### Animation roles (`actions`)
-
-It never hard-codes clip names; it asks for a **role**. The `actions`
-object maps each role to one or more clips:
-
-| Role | When it plays | Fallback when unset |
-| --- | --- | --- |
-| `idle` | resting (can have weighted variants) | first clip |
-| `walk` | walking | `idle` |
-| `clicked` | hovered or dragged | `idle` |
-| `fall_impact` | hard landing | `clicked` |
-| `spinny` | flung / spinning fast | `clicked` |
-| `dance` | dance action | `idle` |
-| `talk` | while a dialogue bubble is visible | *none (opt-in)* |
-
-Each role accepts a string, a single `{ "animation": "...", "weight": N }`, or an
-array of those (weighted variants). Weights default to 1. To give the pet several
-idles where one is rarer:
-
-```json
-"actions": {
-  "idle": [
-    { "animation": "idle",      "weight": 4 },
-    { "animation": "idle_look", "weight": 1 }
-  ],
-  "walk":    { "animation": "walk" },
-  "clicked": { "animation": "hover" },
-  "talk":    { "animation": "hover" }
-}
-```
-
-`fall_impact` is intentionally omitted above, so it inherits `clicked`. The talk
-role only applies while a bubble is showing and the pet is not being dragged.
-If there is no `actions` object at all, roles are derived from the conventional
-clip names (`idle`, `walk`, `hover`, `spinny`, `dancydance`).
 
 ## Transparency & click-through notes
 
@@ -212,7 +173,7 @@ clip names (`idle`, `walk`, `hover`, `spinny`, `dancydance`).
 - On Wayland SDL's renderer shape mask was found to clip/stale the sprite as it
   animated, so it is **not** used; instead we bind `wl_compositor` from the
   `wl_display`/`wl_surface` SDL exposes and set a per-pixel input region
-  (`wl_surface_set_input_region`), which needs `wayland-client`. `DE_SHAPE=1`
+  (`wl_surface_set_input_region`), which needs `wayland-client`. `DVP_SHAPE=1`
   forces the old mask path instead.
 - Upstream SDL has since added `SDL_SetWindowMousePassthrough` (on Wayland an
   empty `wl_surface_set_input_region`); it is whole-window only, so it cannot do
@@ -242,7 +203,7 @@ Done:
   pet uses the transparent surface plus a per-pixel input region, so animation
   no longer clips to a stale silhouette.
 - MinGW-w64 cross build producing a self-contained `.exe` (verified under Wine).
-- Headless render self-test (`DE_SELFTEST=1`).
+- Headless render self-test (`DVP_SELFTEST=1`).
 
 ### Known limitations
 

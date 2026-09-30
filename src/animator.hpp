@@ -1,8 +1,9 @@
+// animator.hpp: frame timing and looping for a single Animation.
 #pragma once
 
 #include "animation.hpp"
 
-namespace de {
+namespace dvp {
 
 // Drives frame selection for one Animation pointer. Owned by Character.
 class Animator {
@@ -26,4 +27,4 @@ private:
     bool finished_ = false;
 };
 
-}  // namespace de
+}  // namespace dvp

@@ -1,18 +1,19 @@
+// platform_clickthrough.hpp: per-platform click-through and input regions.
 #pragma once
 
 #include <SDL3/SDL.h>
 
-namespace de::platform {
+namespace dvp::platform {
 
 // How click routing / window shaping is handled on the current backend.
 enum class InputMode {
     Native,    // X11 / Win32 native input region (click-through, no visual mask)
     Wayland,   // Wayland wl_surface input region (per-pixel click-through)
-    ShapeMask, // SDL renderer shape mask (macOS, or Wayland with DE_SHAPE=1)
+    ShapeMask, // SDL renderer shape mask (macOS, or Wayland with DVP_SHAPE=1)
     None,      // rely on the transparent window; whole window receives input
 };
 
-// Inspected once after the window is created. `DE_SHAPE=1` forces ShapeMask.
+// Inspected once after the window is created. `DVP_SHAPE=1` forces ShapeMask.
 InputMode detect_input_mode(SDL_Window *window);
 
 // Applies a window silhouette so that alpha-transparent pixels pass mouse
@@ -32,4 +33,4 @@ void clear_window_shape(SDL_Window *window);
 // Pushes the window to the bottom of the stacking order (best effort).
 void send_to_bottom(SDL_Window *window);
 
-}  // namespace de::platform
+}  // namespace dvp::platform

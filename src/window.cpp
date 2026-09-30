@@ -1,9 +1,10 @@
+// window.cpp: window/renderer creation and z-order control.
 #include "window.hpp"
 
 #include "log.hpp"
 #include "platform_clickthrough.hpp"
 
-namespace de {
+namespace dvp {
 
 Window::~Window() { destroy(); }
 
@@ -29,13 +30,13 @@ bool Window::create(const WindowConfig &config) {
 
     window_ = SDL_CreateWindow(config.title.c_str(), config.width, config.height, flags);
     if (!window_) {
-        DE_ERROR("SDL_CreateWindow failed: %s", SDL_GetError());
+        DVP_ERROR("SDL_CreateWindow failed: %s", SDL_GetError());
         return false;
     }
 
     renderer_ = SDL_CreateRenderer(window_, nullptr);
     if (!renderer_) {
-        DE_ERROR("SDL_CreateRenderer failed: %s", SDL_GetError());
+        DVP_ERROR("SDL_CreateRenderer failed: %s", SDL_GetError());
         destroy();
         return false;
     }
@@ -109,7 +110,7 @@ bool Window::set_shape(SDL_Surface *shape) {
         return false;
     }
     if (!SDL_SetWindowShape(window_, shape)) {
-        DE_WARN("SDL_SetWindowShape failed: %s", SDL_GetError());
+        DVP_WARN("SDL_SetWindowShape failed: %s", SDL_GetError());
         return false;
     }
     return true;
@@ -121,4 +122,4 @@ void Window::clear_shape() {
     }
 }
 
-}  // namespace de
+}  // namespace dvp

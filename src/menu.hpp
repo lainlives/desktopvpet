@@ -1,3 +1,4 @@
+// menu.hpp: small popup menu with one level of submenu.
 #pragma once
 
 #include <SDL3/SDL.h>
@@ -7,7 +8,7 @@
 
 #include "text_renderer.hpp"
 
-namespace de {
+namespace dvp {
 
 struct MenuItem {
     enum class Kind { Normal, Checkable, Separator };
@@ -72,4 +73,4 @@ private:
     int open_sub_ = -1;  // parent item whose submenu is shown
 };
 
-}  // namespace de
+}  // namespace dvp

@@ -1,10 +1,11 @@
+// text_renderer.cpp: font loading, measurement and cached text drawing.
 #include "text_renderer.hpp"
 
 #include <SDL3_ttf/SDL_ttf.h>
 
 #include "log.hpp"
 
-namespace de {
+namespace dvp {
 
 TextRenderer::~TextRenderer() { unload(); }
 
@@ -14,13 +15,13 @@ bool TextRenderer::load(SDL_Renderer *renderer, const std::string &font_path, fl
     size_ = point_size > 0.0f ? point_size : 14.0f;
 
     if (!TTF_WasInit() && !TTF_Init()) {
-        DE_ERROR("TTF_Init failed: %s", SDL_GetError());
+        DVP_ERROR("TTF_Init failed: %s", SDL_GetError());
         return false;
     }
 
     font_ = TTF_OpenFont(font_path.c_str(), size_);
     if (!font_) {
-        DE_ERROR("TTF_OpenFont('%s') failed: %s", font_path.c_str(), SDL_GetError());
+        DVP_ERROR("TTF_OpenFont('%s') failed: %s", font_path.c_str(), SDL_GetError());
         return false;
     }
     return true;
@@ -112,4 +113,4 @@ void TextRenderer::draw(SDL_Renderer *renderer, const std::string &text, const S
     SDL_RenderTexture(renderer, texture, nullptr, &dst);
 }
 
-}  // namespace de
+}  // namespace dvp

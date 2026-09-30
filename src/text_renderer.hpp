@@ -1,3 +1,4 @@
+// text_renderer.hpp: SDL_ttf text with a per-string texture cache.
 #pragma once
 
 #include <SDL3/SDL.h>
@@ -7,7 +8,7 @@ struct TTF_Font;
 #include <map>
 #include <string>
 
-namespace de {
+namespace dvp {
 
 // Small TTF text helper with a one-entry-per-string texture cache.
 class TextRenderer {
@@ -36,4 +37,4 @@ private:
     mutable std::map<std::string, SDL_Texture *> cache_;
 };
 
-}  // namespace de
+}  // namespace dvp

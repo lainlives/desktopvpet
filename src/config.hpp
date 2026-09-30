@@ -1,3 +1,4 @@
+// config.hpp: minimal dependency-free JSON reader used for character manifests.
 #pragma once
 
 #include <map>
@@ -5,7 +6,7 @@
 #include <string_view>
 #include <vector>
 
-namespace de {
+namespace dvp {
 
 // Minimal, dependency-free JSON value used for character manifests.
 // Supports objects, arrays, strings, numbers, booleans and null.
@@ -44,4 +45,4 @@ Json parse_json(std::string_view text, std::string *error = nullptr);
 // Reads and parses a JSON file. On failure returns a Null value and fills `error`.
 Json load_json_file(const std::string &path, std::string *error = nullptr);
 
-}  // namespace de
+}  // namespace dvp

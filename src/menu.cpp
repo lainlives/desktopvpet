@@ -1,8 +1,9 @@
+// menu.cpp: menu layout, hit-testing, edge clamping and drawing.
 #include "menu.hpp"
 
 #include <algorithm>
 
-namespace de {
+namespace dvp {
 
 namespace {
 const SDL_Color kBg{45, 45, 45, 235};
@@ -93,6 +94,7 @@ void Menu::refresh_layout(const TextRenderer &text) {
     sub_width_ = width_;
 }
 
+// Opens the menu at (x,y), keeping the panel (and room for its submenu) on-screen.
 void Menu::open(float x, float y, float screen_w, float screen_h) {
     x_ = x;
     y_ = y;
@@ -171,6 +173,7 @@ void Menu::on_motion(float x, float y) {
     }
 }
 
+// Returns the activated item id, or -1 (also closes the menu on an outside click).
 int Menu::on_click(float x, float y) {
     if (!visible_) {
         return -1;
@@ -216,6 +219,7 @@ int Menu::on_click(float x, float y) {
     return -1;
 }
 
+// Sizes to the font, then draws the panel(s), hover highlight and submenu.
 void Menu::render(SDL_Renderer *renderer, const TextRenderer &text) {
     if (!visible_) {
         return;
@@ -300,4 +304,4 @@ void Menu::render(SDL_Renderer *renderer, const TextRenderer &text) {
     }
 }
 
-}  // namespace de
+}  // namespace dvp

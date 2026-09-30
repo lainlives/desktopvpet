@@ -1,3 +1,4 @@
+// character.cpp: manifest parsing, role resolution/fallbacks and rendering.
 #include "character.hpp"
 
 #include <algorithm>
@@ -7,7 +8,7 @@
 #include "config.hpp"
 #include "log.hpp"
 
-namespace de {
+namespace dvp {
 
 namespace {
 
@@ -37,10 +38,10 @@ bool Character::load(SDL_Renderer *renderer, const std::string &dir,
     if (error.empty() && root.is_object() && root.has("animations")) {
         // fall through
     } else if (!error.empty()) {
-        DE_ERROR("character manifest '%s': %s", manifest_path.c_str(), error.c_str());
+        DVP_ERROR("character manifest '%s': %s", manifest_path.c_str(), error.c_str());
         return false;
     } else {
-        DE_ERROR("character manifest '%s' is missing an 'animations' object",
+        DVP_ERROR("character manifest '%s' is missing an 'animations' object",
                  manifest_path.c_str());
         return false;
     }
@@ -55,7 +56,7 @@ bool Character::load(SDL_Renderer *renderer, const std::string &dir,
         const std::string &key = entry.first;
         const Json &spec = entry.second;
         if (!spec.is_object()) {
-            DE_WARN("animation '%s' is not an object, skipping", key.c_str());
+            DVP_WARN("animation '%s' is not an object, skipping", key.c_str());
             continue;
         }
 
@@ -71,7 +72,7 @@ bool Character::load(SDL_Renderer *renderer, const std::string &dir,
         anim.source = image;
 
         if (!texture_for(image) && !load_texture(renderer, image, image)) {
-            DE_WARN("animation '%s' skipped: could not load '%s'", key.c_str(), image.c_str());
+            DVP_WARN("animation '%s' skipped: could not load '%s'", key.c_str(), image.c_str());
             continue;
         }
         const Texture *tex = texture_for(image);
@@ -79,7 +80,7 @@ bool Character::load(SDL_Renderer *renderer, const std::string &dir,
         int fw = spec.get_int("frame_width", def_w > 0 ? def_w : static_cast<int>(tex->height()));
         int fh = spec.get_int("frame_height", def_h > 0 ? def_h : static_cast<int>(tex->height()));
         if (fw <= 0 || fh <= 0) {
-            DE_WARN("animation '%s' has invalid frame size %dx%d", key.c_str(), fw, fh);
+            DVP_WARN("animation '%s' has invalid frame size %dx%d", key.c_str(), fw, fh);
             continue;
         }
 
@@ -118,7 +119,7 @@ bool Character::load(SDL_Renderer *renderer, const std::string &dir,
         }
 
         if (anim.frames.empty()) {
-            DE_WARN("animation '%s' produced no frames", key.c_str());
+            DVP_WARN("animation '%s' produced no frames", key.c_str());
             continue;
         }
         animations_[key] = std::move(anim);
@@ -137,7 +138,7 @@ bool Character::load(SDL_Renderer *renderer, const std::string &dir,
     }
 
     if (animations_.empty()) {
-        DE_ERROR("character '%s' has no loadable animations", name_.c_str());
+        DVP_ERROR("character '%s' has no loadable animations", name_.c_str());
         return false;
     }
 
@@ -176,13 +177,13 @@ bool Character::load(SDL_Renderer *renderer, const std::string &dir,
             for (const auto &entry : actions->object) {
                 auto key = role_keys.find(entry.first);
                 if (key == role_keys.end()) {
-                    DE_WARN("unknown action role '%s'", entry.first.c_str());
+                    DVP_WARN("unknown action role '%s'", entry.first.c_str());
                     continue;
                 }
                 roles_[key->second] = parse_variants(entry.second);
             }
         } else {
-            DE_WARN("'actions' must be an object");
+            DVP_WARN("'actions' must be an object");
         }
     }
 
@@ -194,7 +195,7 @@ bool Character::load(SDL_Renderer *renderer, const std::string &dir,
                                           if (animations_.count(v.name)) {
                                               return false;
                                           }
-                                          DE_WARN("action '%s' references missing clip '%s'",
+                                          DVP_WARN("action '%s' references missing clip '%s'",
                                                   role_name(it->first), v.name.c_str());
                                           return true;
                                       }),
@@ -233,7 +234,7 @@ bool Character::load(SDL_Renderer *renderer, const std::string &dir,
     // Start on the idle role.
     play_role(AnimRole::Idle, true);
 
-    DE_INFO("loaded character '%s' with %zu animation(s)", name_.c_str(), animations_.size());
+    DVP_INFO("loaded character '%s' with %zu animation(s)", name_.c_str(), animations_.size());
     return true;
 }
 
@@ -287,8 +288,8 @@ bool Character::play_role(AnimRole role, bool restart) {
     }
     animator_.play(&anim->second, true);
     current_role_ = role;
-    if (std::getenv("DE_DEBUG_ROLE")) {
-        DE_INFO("role '%s' -> clip '%s'", role_name(role), name.c_str());
+    if (std::getenv("DVP_DEBUG_ROLE")) {
+        DVP_INFO("role '%s' -> clip '%s'", role_name(role), name.c_str());
     }
     return true;
 }
@@ -401,4 +402,4 @@ float Character::frame_height() const {
     return static_cast<float>(r.h);
 }
 
-}  // namespace de
+}  // namespace dvp

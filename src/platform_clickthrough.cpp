@@ -1,3 +1,4 @@
+// platform_clickthrough.cpp: X11 / Wayland / Win32 / macOS input region handling.
 #include "platform_clickthrough.hpp"
 
 #include <cstdint>
@@ -11,7 +12,7 @@
 #include <dlfcn.h>
 #endif
 
-#if defined(DE_HAVE_WAYLAND)
+#if defined(DVP_HAVE_WAYLAND)
 #include <wayland-client.h>
 #endif
 
@@ -22,7 +23,7 @@
 #include <windows.h>
 #endif
 
-namespace de::platform {
+namespace dvp::platform {
 
 namespace {
 
@@ -126,7 +127,7 @@ bool load_x11(SDL_Window *window, X11Api *out) {
 // wl_compositor ourselves and set a per-pixel input region: clicks outside the
 // pet pass through while the compositor still delivers pointer events over it
 // (so hover keeps working). Requires wayland-client at build time.
-#if defined(DE_HAVE_WAYLAND)
+#if defined(DVP_HAVE_WAYLAND)
 wl_display *g_wl_display = nullptr;
 wl_surface *g_wl_surface = nullptr;
 wl_compositor *g_wl_compositor = nullptr;
@@ -200,7 +201,7 @@ void wayland_clear_input_region() {
 bool wayland_init(SDL_Window *) { return false; }
 bool wayland_set_input_region(const std::vector<SDL_Rect> &) { return false; }
 void wayland_clear_input_region() {}
-#endif  // DE_HAVE_WAYLAND
+#endif  // DVP_HAVE_WAYLAND
 
 #endif  // __linux__
 
@@ -214,7 +215,7 @@ InputMode detect_input_mode(SDL_Window *window) {
     (void)window;
     return InputMode::ShapeMask;
 #elif defined(__linux__)
-    if (std::getenv("DE_SHAPE")) {
+    if (std::getenv("DVP_SHAPE")) {
         return InputMode::ShapeMask;
     }
     X11Api api;
@@ -280,7 +281,7 @@ bool apply_window_shape(SDL_Window *window, SDL_Surface *shape, const SDL_Rect &
     if (wayland_set_input_region(opaque_runs(shape, content))) {
         return true;
     }
-    // ShapeMask mode (macOS, or Wayland with DE_SHAPE=1): let SDL mask the
+    // ShapeMask mode (macOS, or Wayland with DVP_SHAPE=1): let SDL mask the
     // output. App composites the pet + dialogue + menu into `shape`.
     SDL_SetWindowShape(window, shape);
     return false;
@@ -331,4 +332,4 @@ void clear_window_shape(SDL_Window *window) {
     SDL_SetWindowShape(window, nullptr);
 }
 
-}  // namespace de::platform
+}  // namespace dvp::platform

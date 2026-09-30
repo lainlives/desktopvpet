@@ -1,3 +1,4 @@
+// app.hpp: application shell (init, main loop, events, render, silhouette).
 #pragma once
 
 #include <SDL3/SDL.h>
@@ -12,7 +13,7 @@
 #include "window.hpp"
 #include "text_renderer.hpp"
 
-namespace de {
+namespace dvp {
 
 class App {
 public:
@@ -69,4 +70,4 @@ private:
     float shape_pet_y_ = 0.0f;
 };
 
-}  // namespace de
+}  // namespace dvp

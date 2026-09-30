@@ -1,3 +1,4 @@
+// character.hpp: loads a character manifest and maps semantic roles to clips.
 #pragma once
 
 #include <SDL3/SDL.h>
@@ -12,7 +13,7 @@
 #include "animator.hpp"
 #include "texture.hpp"
 
-namespace de {
+namespace dvp {
 
 // Semantic animation slots. A character maps these to its own animation clips
 // in the manifest so gameplay code never hard-codes clip names.
@@ -99,4 +100,4 @@ private:
     std::mt19937 rng_{std::random_device{}()};
 };
 
-}  // namespace de
+}  // namespace dvp

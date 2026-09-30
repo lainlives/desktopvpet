@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(DesktopEcto
+project(DesktopVPet
     VERSION 0.1.0
     DESCRIPTION "Desktop buddy pet, ported from Godot C# to C++/SDL3"
     LANGUAGES C CXX
@@ -20,30 +20,30 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin" CACHE PATH "Output 
 # ---------------------------------------------------------------------------
 # Options
 # ---------------------------------------------------------------------------
-option(DESKTOPECTO_USE_SYSTEM_SDL "Use system SDL3/SDL3_image instead of the vendored submodules" OFF)
-option(DESKTOPECTO_SDL_SHARED     "Build/link SDL as shared libraries"               OFF)
-option(DESKTOPECTO_COPY_ASSETS    "Copy assets/ next to the built executable"        ON)
+option(DESKTOPVPET_USE_SYSTEM_SDL "Use system SDL3/SDL3_image instead of the vendored submodules" OFF)
+option(DESKTOPVPET_SDL_SHARED     "Build/link SDL as shared libraries"               OFF)
+option(DESKTOPVPET_COPY_ASSETS    "Copy assets/ next to the built executable"        ON)
 
 # ---------------------------------------------------------------------------
 # SDL3 + SDL3_image (vendored submodules by default)
 # ---------------------------------------------------------------------------
-if(DESKTOPECTO_USE_SYSTEM_SDL)
+if(DESKTOPVPET_USE_SYSTEM_SDL)
     find_package(SDL3 3.2.0 REQUIRED)
     find_package(SDL3_image 3.2.0 REQUIRED)
     find_package(SDL3_ttf 3.2.0 REQUIRED)
-    set(DESKTOPECTO_SDL_TARGET     SDL3::SDL3)
-    set(DESKTOPECTO_SDLIMG_TARGET  SDL3_image::SDL3_image)
-    set(DESKTOPECTO_SDLTTF_TARGET  SDL3_ttf::SDL3_ttf)
+    set(DESKTOPVPET_SDL_TARGET     SDL3::SDL3)
+    set(DESKTOPVPET_SDLIMG_TARGET  SDL3_image::SDL3_image)
+    set(DESKTOPVPET_SDLTTF_TARGET  SDL3_ttf::SDL3_ttf)
 else()
     if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/sdl/SDL/CMakeLists.txt")
         message(FATAL_ERROR
             "Vendored SDL3 submodule missing. Run:\n"
             "  git submodule update --init --recursive\n"
-            "or configure with -DDESKTOPECTO_USE_SYSTEM_SDL=ON")
+            "or configure with -DDESKTOPVPET_USE_SYSTEM_SDL=ON")
     endif()
 
     # SDL3
-    if(DESKTOPECTO_SDL_SHARED)
+    if(DESKTOPVPET_SDL_SHARED)
         set(SDL_SHARED ON  CACHE BOOL "" FORCE)
         set(SDL_STATIC OFF CACHE BOOL "" FORCE)
     else()
@@ -57,13 +57,13 @@ else()
     add_subdirectory(sdl/SDL EXCLUDE_FROM_ALL)
 
     # SDL3_image
-    set(BUILD_SHARED_LIBS    ${DESKTOPECTO_SDL_SHARED} CACHE BOOL "" FORCE)
+    set(BUILD_SHARED_LIBS    ${DESKTOPVPET_SDL_SHARED} CACHE BOOL "" FORCE)
     set(SDLIMAGE_VENDORED    ON  CACHE BOOL "" FORCE)
     set(SDLIMAGE_SAMPLES     OFF CACHE BOOL "" FORCE)
     set(SDLIMAGE_TESTS       OFF CACHE BOOL "" FORCE)
     set(SDLIMAGE_INSTALL     OFF CACHE BOOL "" FORCE)
     set(SDLIMAGE_DEPS_SHARED OFF CACHE BOOL "" FORCE)
-    # DesktopEcto only needs PNG/JPG/GIF-class images; disabling the heavier
+    # DesktopVPet only needs PNG/JPG/GIF-class images; disabling the heavier
     # codecs avoids pulling their (large) vendored submodules.
     set(SDLIMAGE_AVIF OFF CACHE BOOL "" FORCE)
     set(SDLIMAGE_JXL  OFF CACHE BOOL "" FORCE)
@@ -87,15 +87,15 @@ else()
     set(SDLTTF_INSTALL   OFF CACHE BOOL "" FORCE)
     add_subdirectory(sdl/SDL_ttf EXCLUDE_FROM_ALL)
 
-    set(DESKTOPECTO_SDL_TARGET    SDL3::SDL3)
-    set(DESKTOPECTO_SDLIMG_TARGET SDL3_image::SDL3_image)
-    set(DESKTOPECTO_SDLTTF_TARGET SDL3_ttf::SDL3_ttf)
+    set(DESKTOPVPET_SDL_TARGET    SDL3::SDL3)
+    set(DESKTOPVPET_SDLIMG_TARGET SDL3_image::SDL3_image)
+    set(DESKTOPVPET_SDLTTF_TARGET SDL3_ttf::SDL3_ttf)
 endif()
 
 # ---------------------------------------------------------------------------
 # Application
 # ---------------------------------------------------------------------------
-add_executable(desktop_ecto
+add_executable(desktop_vpet
     src/main.cpp
     src/app.cpp
     src/window.cpp
@@ -110,22 +110,22 @@ add_executable(desktop_ecto
     src/menu.cpp
 )
 
-target_include_directories(desktop_ecto PRIVATE src)
-target_link_libraries(desktop_ecto PRIVATE
-    ${DESKTOPECTO_SDL_TARGET}
-    ${DESKTOPECTO_SDLIMG_TARGET}
-    ${DESKTOPECTO_SDLTTF_TARGET}
+target_include_directories(desktop_vpet PRIVATE src)
+target_link_libraries(desktop_vpet PRIVATE
+    ${DESKTOPVPET_SDL_TARGET}
+    ${DESKTOPVPET_SDLIMG_TARGET}
+    ${DESKTOPVPET_SDLTTF_TARGET}
 )
 
 if(MSVC)
-    target_compile_options(desktop_ecto PRIVATE /W4 /permissive-)
+    target_compile_options(desktop_vpet PRIVATE /W4 /permissive-)
 else()
-    target_compile_options(desktop_ecto PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(desktop_vpet PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
 if(MINGW)
     # Keep the .exe self-contained (no libstdc++/libgcc/libwinpthread DLLs).
-    target_link_options(desktop_ecto PRIVATE -static-libgcc -static-libstdc++ -static)
+    target_link_options(desktop_vpet PRIVATE -static-libgcc -static-libstdc++ -static)
 endif()
 
 # Wayland per-pixel click-through (optional; needs wayland-client dev files).
@@ -135,9 +135,9 @@ if(UNIX AND NOT APPLE)
         pkg_check_modules(WAYLAND_CLIENT QUIET wayland-client)
     endif()
     if(WAYLAND_CLIENT_FOUND)
-        target_compile_definitions(desktop_ecto PRIVATE DE_HAVE_WAYLAND=1)
-        target_include_directories(desktop_ecto PRIVATE ${WAYLAND_CLIENT_INCLUDE_DIRS})
-        target_link_libraries(desktop_ecto PRIVATE ${WAYLAND_CLIENT_LIBRARIES})
+        target_compile_definitions(desktop_vpet PRIVATE DE_HAVE_WAYLAND=1)
+        target_include_directories(desktop_vpet PRIVATE ${WAYLAND_CLIENT_INCLUDE_DIRS})
+        target_link_libraries(desktop_vpet PRIVATE ${WAYLAND_CLIENT_LIBRARIES})
         message(STATUS "Wayland click-through: enabled (${WAYLAND_CLIENT_VERSION})")
     else()
         message(STATUS "Wayland click-through: disabled (wayland-client not found)")
@@ -147,37 +147,37 @@ endif()
 # ---------------------------------------------------------------------------
 # Runtime layout: keep the exe beside its libraries and assets
 # ---------------------------------------------------------------------------
-if(DESKTOPECTO_COPY_ASSETS)
-    add_custom_command(TARGET desktop_ecto POST_BUILD
+if(DESKTOPVPET_COPY_ASSETS)
+    add_custom_command(TARGET desktop_vpet POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_CURRENT_SOURCE_DIR}/assets"
-            "$<TARGET_FILE_DIR:desktop_ecto>/assets"
-        COMMENT "Copying assets next to desktop_ecto"
+            "$<TARGET_FILE_DIR:desktop_vpet>/assets"
+        COMMENT "Copying assets next to desktop_vpet"
     )
 endif()
 
 # Stage shared SDL libraries next to the executable so the output directory is
 # self-contained and relocatable.
-if(UNIX AND NOT APPLE AND DESKTOPECTO_SDL_SHARED)
-    set_target_properties(desktop_ecto PROPERTIES
+if(UNIX AND NOT APPLE AND DESKTOPVPET_SDL_SHARED)
+    set_target_properties(desktop_vpet PROPERTIES
         BUILD_RPATH   "$ORIGIN"
         INSTALL_RPATH "$ORIGIN"
     )
 endif()
 
-if(DESKTOPECTO_SDL_SHARED)
-    add_custom_command(TARGET desktop_ecto POST_BUILD
+if(DESKTOPVPET_SDL_SHARED)
+    add_custom_command(TARGET desktop_vpet POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:${DESKTOPECTO_SDL_TARGET}>"
-            "$<TARGET_FILE_DIR:desktop_ecto>"
+            "$<TARGET_FILE:${DESKTOPVPET_SDL_TARGET}>"
+            "$<TARGET_FILE_DIR:desktop_vpet>"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:${DESKTOPECTO_SDLIMG_TARGET}>"
-            "$<TARGET_FILE_DIR:desktop_ecto>"
+            "$<TARGET_FILE:${DESKTOPVPET_SDLIMG_TARGET}>"
+            "$<TARGET_FILE_DIR:desktop_vpet>"
         COMMENT "Staging SDL shared libraries"
     )
 endif()
 
 if(WIN32)
     # CreateRectRgn/CombineRgn/SetWindowRgn live in gdi32.
-    target_link_libraries(desktop_ecto PRIVATE gdi32 user32)
+    target_link_libraries(desktop_vpet PRIVATE gdi32 user32)
 endif()

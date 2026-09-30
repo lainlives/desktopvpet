@@ -1,3 +1,4 @@
+// main.cpp: entry point; resolves the asset root, character and runs the App.
 #include <string>
 
 #include "app.hpp"
@@ -12,7 +13,7 @@ int main(int argc, char **argv) {
         character = argv[2];
     }
 
-    de::App app;
+    dvp::App app;
     if (!app.init(asset_root, character)) {
         app.shutdown();
         return 1;

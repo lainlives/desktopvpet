@@ -1,9 +1,10 @@
+// log.hpp: tiny printf-style logger with severity prefixes (DVP_INFO/WARN/ERROR...).
 #pragma once
 
 #include <cstdarg>
 #include <cstdio>
 
-namespace de {
+namespace dvp {
 
 enum class LogLevel { Debug, Info, Warn, Error };
 
@@ -23,10 +24,10 @@ inline void log_write(LogLevel level, const char *fmt, ...) {
     std::fputc('\n', stderr);
 }
 
-#define DE_LOG(level, ...) ::de::log_write(level, __VA_ARGS__)
-#define DE_DEBUG(...) DE_LOG(::de::LogLevel::Debug, __VA_ARGS__)
-#define DE_INFO(...)  DE_LOG(::de::LogLevel::Info, __VA_ARGS__)
-#define DE_WARN(...)  DE_LOG(::de::LogLevel::Warn, __VA_ARGS__)
-#define DE_ERROR(...) DE_LOG(::de::LogLevel::Error, __VA_ARGS__)
+#define DVP_LOG(level, ...) ::dvp::log_write(level, __VA_ARGS__)
+#define DVP_DEBUG(...) DVP_LOG(::dvp::LogLevel::Debug, __VA_ARGS__)
+#define DVP_INFO(...)  DVP_LOG(::dvp::LogLevel::Info, __VA_ARGS__)
+#define DVP_WARN(...)  DVP_LOG(::dvp::LogLevel::Warn, __VA_ARGS__)
+#define DVP_ERROR(...) DVP_LOG(::dvp::LogLevel::Error, __VA_ARGS__)
 
-}  // namespace de
+}  // namespace dvp

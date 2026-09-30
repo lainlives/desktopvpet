@@ -1,8 +1,9 @@
+// pet.hpp: DIY physics + behaviour state machine for the pet.
 #pragma once
 
 #include <random>
 
-namespace de {
+namespace dvp {
 
 enum class PetState { Idle, Hovered, Spinny, Dragged, Walking, DancyDance };
 
@@ -65,4 +66,4 @@ private:
     std::mt19937 rng_{std::random_device{}()};
 };
 
-}  // namespace de
+}  // namespace dvp

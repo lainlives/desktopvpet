@@ -1,9 +1,10 @@
+// pet.cpp: gravity/floor/wall physics, dragging and action selection.
 #include "pet.hpp"
 
 #include <algorithm>
 #include <cmath>
 
-namespace de {
+namespace dvp {
 
 namespace {
 constexpr float kGravity = 1500.0f;      // px/s^2
@@ -213,4 +214,4 @@ void Pet::update(float dt, float world_w, float world_h, const PetInput &input) 
     }
 }
 
-}  // namespace de
+}  // namespace dvp

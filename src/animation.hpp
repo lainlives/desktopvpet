@@ -1,3 +1,4 @@
+// animation.hpp: one animation clip (source sheet key, frame rects, fps, loop).
 #pragma once
 
 #include <SDL3/SDL.h>
@@ -6,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace de {
+namespace dvp {
 
 // A single animation clip. `frames` are source-pixel rectangles inside the
 // texture identified by `source` (a key owned by Character).
@@ -23,4 +24,4 @@ struct Animation {
 
 using AnimationSet = std::map<std::string, Animation>;
 
-}  // namespace de
+}  // namespace dvp
