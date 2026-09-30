@@ -45,4 +45,10 @@ Json parse_json(std::string_view text, std::string *error = nullptr);
 // Reads and parses a JSON file. On failure returns a Null value and fills `error`.
 Json load_json_file(const std::string &path, std::string *error = nullptr);
 
+// Serialises a value (pretty-printed when `indent` > 0).
+std::string encode_json(const Json &value, int indent = 2);
+
+// Serialises and writes `value` to `path`. Returns false and fills `error` on failure.
+bool save_json_file(const std::string &path, const Json &value, std::string *error = nullptr);
+
 }  // namespace dvp

@@ -1,4 +1,4 @@
-// app.cpp: wires window, character, pet, dialogue and menu together.
+// app.cpp: wires window, characters, pets, dialogues and the menu together.
 #include "app.hpp"
 
 #include <algorithm>
@@ -6,19 +6,20 @@
 #include <cstdlib>
 #include <filesystem>
 
-#include "log.hpp"
-#include <vector>
-
 #include <SDL3_ttf/SDL_ttf.h>
 
+#include "log.hpp"
 #include "platform_clickthrough.hpp"
 
 namespace dvp {
 
 namespace {
-constexpr float kShapeInterval = 0.05f;  // update silhouette at ~20 Hz
+constexpr float kShapeInterval = 0.05f;      // silhouette refresh (~20 Hz) in native modes
 constexpr float kAutoDialogueInterval = 5.0f;
+constexpr float kPetSpacing = 150.0f;        // horizontal spawn spacing
+constexpr int kCharacterMenuBase = 100;      // menu id of character 0 (100, 101, ...)
 
+// Maps the pet's behaviour state to a semantic animation role.
 AnimRole role_for_pet(const Pet &pet) {
     if (pet.impact_active()) {
         return AnimRole::FallImpact;
@@ -42,18 +43,18 @@ bool App::init(const std::string &asset_root, const std::string &character_name)
     }
     SDL_SetAppMetadata("DesktopVPet", "0.1.0", "dev.desktopvpet");
 
-    const std::string root = resolve_asset_root(asset_root);
-    if (root.empty()) {
+    root_ = resolve_asset_root(asset_root);
+    if (root_.empty()) {
         DVP_ERROR("could not locate the assets directory (pass it as argv[1])");
         return false;
     }
-    DVP_INFO("asset root: %s", root.c_str());
+    DVP_INFO("asset root: %s", root_.c_str());
 
     WindowConfig cfg;
     cfg.title = "DesktopVPet";
 
-    // Span the union of all displays so the pet can roam across monitors
-    // (works on X11; Wayland composites a single surface per output).
+    // Span the union of all displays so pets can roam across monitors (works on
+    // X11; Wayland composites a single surface per output).
     SDL_Rect bounds{0, 0, 1280, 720};
     int display_count = 0;
     if (SDL_DisplayID *displays = SDL_GetDisplays(&display_count)) {
@@ -100,38 +101,62 @@ bool App::init(const std::string &asset_root, const std::string &character_name)
     }
     DVP_INFO("click-through mode: %s", mode_name);
 
-    const std::string char_dir = root + "/characters/" + character_name;
-    if (!character_.load(window_.renderer(), char_dir)) {
-        DVP_ERROR("failed to load character from '%s'", char_dir.c_str());
+    // --- Discover and load characters ------------------------------------
+    const std::vector<std::string> names = scan_characters(root_);
+    if (names.empty()) {
+        DVP_ERROR("no character folders found under '%s/characters'", root_.c_str());
         return false;
     }
 
-    // Window title reflects the loaded character (e.g. "Desktop Ecto").
-    const std::string window_title = "Desktop " + character_.name();
-    SDL_SetWindowTitle(window_.handle(), window_title.c_str());
+    std::string initial = character_name;
+    if (initial.empty() || std::find(names.begin(), names.end(), initial) == names.end()) {
+        if (!character_name.empty()) {
+            DVP_WARN("character '%s' not found; using '%s'", character_name.c_str(),
+                     names.front().c_str());
+        }
+        initial = names.front();
+    }
 
-    pet_.set_frame_size(character_.frame_width(), character_.frame_height());
-    pet_.set_position(static_cast<float>(cfg.width) * 0.5f,
-                      static_cast<float>(cfg.height) * 0.5f);
+    for (const std::string &name : names) {
+        auto instance = std::make_unique<PetInstance>();
+        instance->id = name;
+        const std::string dir = root_ + "/characters/" + name;
+        if (!instance->character.load(window_.renderer(), dir)) {
+            DVP_WARN("skipping character '%s' (load failed)", name.c_str());
+            continue;
+        }
+        instance->dialogue.set_strings(instance->character.dialogue_strings());
+        instance->dialogue.set_auto_chance(6, 3.0f);
+        instance->active = (name == initial);
+        pets_.push_back(std::move(instance));
+    }
+    if (pets_.empty()) {
+        DVP_ERROR("no loadable characters under '%s/characters'", root_.c_str());
+        return false;
+    }
 
-    dialogue_.set_strings(character_.dialogue_strings());
-    dialogue_.set_auto_chance(6, 3.0f);
-
-    const std::string font_path = root + "/" + character_.font();
-    if (!ui_text_.load(window_.renderer(), font_path, character_.font_size())) {
+    // Shared UI font, taken from the first loaded character.
+    const std::string font_path = root_ + "/" + pets_.front()->character.font();
+    if (!ui_text_.load(window_.renderer(), font_path, pets_.front()->character.font_size())) {
         DVP_WARN("UI text disabled: could not load font '%s'", font_path.c_str());
     }
 
-    menu_.set_items({
-        MenuItem{"Exit", 0, MenuItem::Kind::Normal, false, true, {}},
-        MenuItem{"Force sort?", -1, MenuItem::Kind::Normal, false, true,
-                 {
-                     MenuItem{"Disabled", 1, MenuItem::Kind::Checkable, false, true, {}},
-                     MenuItem{"Top", 2, MenuItem::Kind::Checkable, true, true, {}},
-                     MenuItem{"Bottom", 3, MenuItem::Kind::Checkable, false, true, {}},
-                 }},
-    });
+    // DVP_ALL=1 activates every detected character (useful for testing).
+    if (std::getenv("DVP_ALL")) {
+        for (auto &pet : pets_) {
+            pet->active = true;
+        }
+    }
+    for (std::size_t i = 0; i < pets_.size(); ++i) {
+        if (pets_[i]->active) {
+            spawn_pet(*pets_[i], static_cast<int>(i));
+        }
+    }
+
+    build_menu();
     window_.set_sorting(sort_mode_);
+    refresh_window_title();
+    DVP_INFO("loaded %zu character(s)", pets_.size());
 
     no_shape_ = std::getenv("DVP_NO_SHAPE") != nullptr;
     selftest_ = std::getenv("DVP_SELFTEST") != nullptr;
@@ -162,6 +187,106 @@ std::string App::resolve_asset_root(const std::string &requested) const {
         }
     }
     return {};
+}
+
+std::vector<std::string> App::scan_characters(const std::string &root) const {
+    std::vector<std::string> names;
+    std::error_code ec;
+    const std::string dir = root + "/characters";
+    for (const auto &entry : std::filesystem::directory_iterator(dir, ec)) {
+        std::error_code is_dir_ec;
+        if (!entry.is_directory(is_dir_ec)) {
+            continue;
+        }
+        std::error_code exists_ec;
+        if (std::filesystem::exists(entry.path() / "character.json", exists_ec)) {
+            names.push_back(entry.path().filename().string());
+        }
+    }
+    std::sort(names.begin(), names.end());
+    return names;
+}
+
+void App::spawn_pet(PetInstance &pet, int index) {
+    pet.pet.set_frame_size(pet.character.frame_width(), pet.character.frame_height());
+    const float n = static_cast<float>(pets_.size());
+    const float cx = window_.width() * 0.5f +
+                     (static_cast<float>(index) - (n - 1.0f) * 0.5f) * kPetSpacing;
+    const float cy = window_.height() * 0.45f;
+    pet.pet.set_position(std::clamp(cx, 80.0f, window_.width() - 80.0f), cy);
+    pet.spawned = true;
+}
+
+void App::build_menu() {
+    std::vector<MenuItem> items;
+    items.push_back(MenuItem{"Exit", 0, MenuItem::Kind::Normal, false, true, {}});
+
+    // Only offer character selection when more than one character exists.
+    if (pets_.size() > 1) {
+        MenuItem characters;
+        characters.label = "Characters";
+        characters.id = -1;
+        for (std::size_t i = 0; i < pets_.size(); ++i) {
+            characters.submenu.push_back(MenuItem{
+                pets_[i]->character.name(), kCharacterMenuBase + static_cast<int>(i),
+                MenuItem::Kind::Checkable, pets_[i]->active, true, {}});
+        }
+        items.push_back(std::move(characters));
+    }
+
+    items.push_back(MenuItem{
+        "Force sort?", -1, MenuItem::Kind::Normal, false, true,
+        {
+            MenuItem{"Disabled", 1, MenuItem::Kind::Checkable,
+                     sort_mode_ == WindowSort::Disabled, true, {}},
+            MenuItem{"Top", 2, MenuItem::Kind::Checkable, sort_mode_ == WindowSort::Top, true, {}},
+            MenuItem{"Bottom", 3, MenuItem::Kind::Checkable,
+                     sort_mode_ == WindowSort::Bottom, true, {}},
+        }});
+    menu_.set_items(std::move(items));
+}
+
+void App::refresh_window_title() {
+    std::vector<std::string> active;
+    for (const auto &pet : pets_) {
+        if (pet->active) {
+            active.push_back(pet->character.name());
+        }
+    }
+    std::string title = "DesktopVPet";
+    if (active.size() == 1) {
+        title = "Desktop " + active.front();
+    } else if (!active.empty()) {
+        title = "Desktop " + active.front();
+        for (std::size_t i = 1; i < active.size(); ++i) {
+            title += ", " + active[i];
+        }
+    }
+    SDL_SetWindowTitle(window_.handle(), title.c_str());
+}
+
+int App::active_count() const {
+    int count = 0;
+    for (const auto &pet : pets_) {
+        if (pet->active) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+int App::topmost_pet_at(float x, float y) const {
+    // Iterate back-to-front: the last active pet is drawn on top.
+    for (int i = static_cast<int>(pets_.size()) - 1; i >= 0; --i) {
+        const PetInstance &p = *pets_[i];
+        if (!p.active) {
+            continue;
+        }
+        if (p.character.hit_test(x, y, p.pet.x(), p.pet.y(), p.pet.angle())) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 void App::run() {
@@ -197,10 +322,22 @@ void App::run_selftest() {
     SDL_SetRenderTarget(renderer, target);
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
     SDL_RenderClear(renderer);
-    character_.render(renderer, kSize * 0.5f, kSize * 0.5f, 0.0f, false);
-    dialogue_.activate();
-    dialogue_.update(1.0f);  // fade in
-    dialogue_.render(renderer, ui_text_, kSize * 0.5f, kSize * 0.5f + 70.0f);
+
+    int drawn = 0;
+    for (const auto &pet : pets_) {
+        if (!pet->active) {
+            continue;
+        }
+        const float x = kSize * 0.5f + (drawn - 0.5f) * 96.0f;
+        pet->character.render(renderer, x, kSize * 0.5f, 0.0f, false);
+        ++drawn;
+    }
+    if (!pets_.empty()) {
+        PetInstance &first = *pets_.front();
+        first.dialogue.activate();
+        first.dialogue.update(1.0f);  // fade in
+        first.dialogue.render(renderer, ui_text_, kSize * 0.5f, kSize * 0.5f + 70.0f);
+    }
     menu_.refresh_layout(ui_text_);
     menu_.open(static_cast<float>(kSize - 2), static_cast<float>(kSize - 2),
                static_cast<float>(kSize), static_cast<float>(kSize));
@@ -229,8 +366,8 @@ void App::run_selftest() {
     }
     SDL_SetRenderTarget(renderer, nullptr);
     SDL_DestroyTexture(target);
-    DVP_INFO("selftest: %d opaque pixels rendered for animation '%s' (font=%s)", opaque,
-            character_.current_animation().c_str(), ui_text_.valid() ? "yes" : "no");
+    DVP_INFO("selftest: %d opaque pixels, %d character(s), font=%s", opaque, drawn,
+             ui_text_.valid() ? "yes" : "no");
 }
 
 // Routes SDL events: quit/keys, mouse (menu first, then pet drag), resizes.
@@ -248,7 +385,7 @@ void App::handle_event(const SDL_Event &event) {
                         running_ = false;
                     }
                 } else if (event.key.scancode == SDL_SCANCODE_T) {
-                    apply_sort(static_cast<int>(sort_mode_) == 0 ? 2 : 1);
+                    apply_menu_action(static_cast<int>(sort_mode_) == 0 ? 2 : 1);
                 }
             }
             break;
@@ -263,7 +400,7 @@ void App::handle_event(const SDL_Event &event) {
             if (event.button.button == SDL_BUTTON_RIGHT) {
                 mouse_x_ = event.button.x;
                 mouse_y_ = event.button.y;
-                if (character_.hit_test(mouse_x_, mouse_y_, pet_.x(), pet_.y(), pet_.angle())) {
+                if (topmost_pet_at(mouse_x_, mouse_y_) >= 0) {
                     open_menu();
                 } else if (menu_.visible()) {
                     menu_.close();
@@ -274,12 +411,15 @@ void App::handle_event(const SDL_Event &event) {
                 if (menu_.visible()) {
                     const int id = menu_.on_click(mouse_x_, mouse_y_);
                     if (id >= 0) {
-                        apply_sort(id);
+                        apply_menu_action(id);
                     }
-                } else if (character_.hit_test(mouse_x_, mouse_y_, pet_.x(), pet_.y(),
-                                               pet_.angle())) {
-                    mouse_down_ = true;
-                    mouse_pressed_ = true;
+                } else {
+                    const int index = topmost_pet_at(mouse_x_, mouse_y_);
+                    if (index >= 0) {
+                        drag_index_ = index;
+                        mouse_down_ = true;
+                        mouse_pressed_ = true;
+                    }
                 }
             }
             break;
@@ -308,30 +448,51 @@ void App::open_menu() {
                static_cast<float>(window_.height()));
 }
 
-void App::apply_sort(int id) {
-    switch (id) {
-        case 0:
-            running_ = false;
-            return;
-        case 1:
-            sort_mode_ = WindowSort::Disabled;
-            break;
-        case 2:
-            sort_mode_ = WindowSort::Top;
-            break;
-        case 3:
-            sort_mode_ = WindowSort::Bottom;
-            break;
-        default:
-            return;
+void App::apply_menu_action(int id) {
+    // Exit.
+    if (id == 0) {
+        running_ = false;
+        return;
     }
-    menu_.set_checked(1, sort_mode_ == WindowSort::Disabled);
-    menu_.set_checked(2, sort_mode_ == WindowSort::Top);
-    menu_.set_checked(3, sort_mode_ == WindowSort::Bottom);
-    window_.set_sorting(sort_mode_);
+    // Force sort (one-hot).
+    if (id >= 1 && id <= 3) {
+        switch (id) {
+            case 1: sort_mode_ = WindowSort::Disabled; break;
+            case 2: sort_mode_ = WindowSort::Top; break;
+            case 3: sort_mode_ = WindowSort::Bottom; break;
+            default: return;
+        }
+        menu_.set_checked(1, sort_mode_ == WindowSort::Disabled);
+        menu_.set_checked(2, sort_mode_ == WindowSort::Top);
+        menu_.set_checked(3, sort_mode_ == WindowSort::Bottom);
+        window_.set_sorting(sort_mode_);
+        return;
+    }
+    // Character toggles (multi-select).
+    if (id >= kCharacterMenuBase) {
+        const int index = id - kCharacterMenuBase;
+        if (index < 0 || index >= static_cast<int>(pets_.size())) {
+            return;
+        }
+        PetInstance &pet = *pets_[index];
+        if (pet.active) {
+            if (active_count() <= 1) {
+                menu_.set_checked(id, true);  // always keep at least one pet
+                return;
+            }
+            pet.active = false;
+        } else {
+            pet.active = true;
+            if (!pet.spawned) {
+                spawn_pet(pet, index);
+            }
+        }
+        menu_.set_checked(id, pet.active);
+        refresh_window_title();
+    }
 }
 
-// One simulation step: input, pet physics, animation role, dialogue, silhouette.
+// One simulation step: input, pet physics, animation roles, dialogue, silhouette.
 void App::update(float dt) {
     if (dt <= 0.0f) {
         dt = 1.0f / 60.0f;
@@ -342,48 +503,64 @@ void App::update(float dt) {
     float my = mouse_y_;
     SDL_GetMouseState(&mx, &my);
 
-    PetInput input;
-    input.mouse_x = mx;
-    input.mouse_y = my;
-    input.mouse_down = mouse_down_ && !menu_.visible();
-    input.mouse_pressed = mouse_pressed_;
-    input.mouse_released = mouse_released_;
-    input.mouse_on_pet = character_.hit_test(mx, my, pet_.x(), pet_.y(), pet_.angle());
+    const int hover_index = menu_.visible() ? -1 : topmost_pet_at(mx, my);
+    const bool menu_open = menu_.visible();
 
-    pet_.update(dt, static_cast<float>(window_.width()),
-                static_cast<float>(window_.height()), input);
-
-    mouse_pressed_ = false;
-    mouse_released_ = false;
-
-    if (const char *forced = std::getenv("DVP_ANIM")) {
-        if (character_.has_animation(forced)) {
-            character_.play(forced);
+    for (std::size_t i = 0; i < pets_.size(); ++i) {
+        PetInstance &p = *pets_[i];
+        if (!p.active) {
+            continue;
         }
-    } else {
-        AnimRole role = role_for_pet(pet_);
-        if (dialogue_.alpha() > 0.01f && pet_.state() != PetState::Dragged &&
-            character_.has_role(AnimRole::Talk)) {
-            role = AnimRole::Talk;
-        }
-        character_.play_role(role);
-    }
-    character_.update(dt);
+        const int index = static_cast<int>(i);
 
-    if (force_talk_ && dialogue_.alpha() <= 0.01f) {
-        dialogue_.activate();
-    }
-    dialogue_.update(dt);
-    dialogue_timer_ += dt;
-    if (dialogue_timer_ > kAutoDialogueInterval) {
-        dialogue_timer_ = 0.0f;
-        if (!dialogue_.active() && !dialogue_.message().empty()) {
-            rng_ = rng_ * 1103515245 + 12345;
-            if ((rng_ & 0x7fffffff) % 6 == 0) {
-                dialogue_.activate();
+        PetInput input;
+        input.mouse_x = mx;
+        input.mouse_y = my;
+        input.mouse_on_pet = (index == hover_index);
+        input.mouse_down = !menu_open && (drag_index_ == index || drag_index_ == -1);
+        input.mouse_pressed = !menu_open && (index == hover_index) && mouse_pressed_;
+        input.mouse_released = (drag_index_ == index) && mouse_released_;
+
+        p.pet.update(dt, static_cast<float>(window_.width()),
+                     static_cast<float>(window_.height()), input);
+
+        // Animation role (with a talk override while a bubble is visible).
+        if (const char *forced = std::getenv("DVP_ANIM")) {
+            if (p.character.has_animation(forced)) {
+                p.character.play(forced);
+            }
+        } else {
+            AnimRole role = role_for_pet(p.pet);
+            if (p.dialogue.alpha() > 0.01f && p.pet.state() != PetState::Dragged &&
+                p.character.has_role(AnimRole::Talk)) {
+                role = AnimRole::Talk;
+            }
+            p.character.play_role(role);
+        }
+        p.character.update(dt);
+
+        // Per-pet dialogue scheduling.
+        if (force_talk_ && p.dialogue.alpha() <= 0.01f) {
+            p.dialogue.activate();
+        }
+        p.dialogue.update(dt);
+        p.dialogue_timer += dt;
+        if (p.dialogue_timer > kAutoDialogueInterval) {
+            p.dialogue_timer = 0.0f;
+            if (!p.dialogue.active() && !p.dialogue.message().empty()) {
+                p.dialogue_rng = p.dialogue_rng * 1103515245u + 12345u;
+                if ((p.dialogue_rng & 0x7fffffffu) % 6 == 0) {
+                    p.dialogue.activate();
+                }
             }
         }
     }
+
+    if (mouse_released_) {
+        drag_index_ = -1;
+    }
+    mouse_pressed_ = false;
+    mouse_released_ = false;
 
     update_click_through(dt);
 
@@ -395,18 +572,23 @@ void App::update(float dt) {
     }
 }
 
-// Clears to transparent, draws the pet + dialogue + menu, then presents.
+// Clears to transparent, draws every active pet + dialogue, then the menu.
 void App::render() {
     SDL_Renderer *renderer = window_.renderer();
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
     SDL_RenderClear(renderer);
 
-    character_.render(renderer, pet_.x(), pet_.y(), pet_.angle(), pet_.facing_left());
-
-    const float bubble_bottom = pet_.y() - character_.frame_height() * 0.5f - 6.0f;
-    dialogue_.render(renderer, ui_text_, pet_.x(), bubble_bottom);
+    for (const auto &pet : pets_) {
+        if (!pet->active) {
+            continue;
+        }
+        const Pet &p = pet->pet;
+        const Character &c = pet->character;
+        c.render(renderer, p.x(), p.y(), p.angle(), p.facing_left());
+        const float bubble_bottom = p.y() - c.frame_height() * 0.5f - 6.0f;
+        pet->dialogue.render(renderer, ui_text_, p.x(), bubble_bottom);
+    }
     menu_.render(renderer, ui_text_);
-
     SDL_RenderPresent(renderer);
 }
 
@@ -416,25 +598,29 @@ void App::update_click_through(float dt) {
     }
     shape_timer_ += dt;
 
-    SDL_Rect frame_rect = character_.current_frame_rect();
-    const int frame = character_.current_frame_index();
-    const bool anim_changed = character_.current_animation() != shape_anim_;
-    const bool frame_changed = frame != shape_frame_;
-    const bool moved = std::fabs(pet_.x() - shape_pet_x_) > 0.5f ||
-                       std::fabs(pet_.y() - shape_pet_y_) > 0.5f;
-    // While the menu is open (or just closed) its input rects must stay in
-    // sync, including when the hovered submenu changes.
+    // Any active pet moving/animating, or the menu, dirties the union mask.
+    bool pet_dirty = false;
+    for (const auto &pet : pets_) {
+        if (!pet->active) {
+            continue;
+        }
+        const int frame = pet->character.current_frame_index();
+        if (pet->character.current_animation() != pet->shape_anim || frame != pet->shape_frame ||
+            std::fabs(pet->pet.x() - pet->shape_x) > 0.5f ||
+            std::fabs(pet->pet.y() - pet->shape_y) > 0.5f) {
+            pet_dirty = true;
+            break;
+        }
+    }
     const bool menu_dirty = menu_.visible() || shape_menu_visible_;
 
-    if (!anim_changed && !frame_changed && !moved && !menu_dirty) {
+    if (!pet_dirty && !menu_dirty) {
         return;
     }
-    // Animation/frame/menu changes update immediately; pure movement is
-    // throttled, unless the platform uses the (expensive, whole-output)
-    // renderer shape mask, in which case we must update every frame to avoid
-    // clipping the moving sprite.
+    // Menu changes update immediately; pet movement/anim is throttled in native
+    // modes (or every frame when the whole-output renderer mask is in use).
     const float interval = shape_native_ ? kShapeInterval : 0.0f;
-    if (!anim_changed && !frame_changed && !menu_dirty && shape_timer_ < interval) {
+    if (!menu_dirty && shape_timer_ < interval) {
         return;
     }
     shape_timer_ = 0.0f;
@@ -445,7 +631,6 @@ void App::update_click_through(float dt) {
     if (w <= 0 || h <= 0) {
         return;
     }
-
     if (!shape_surface_ || shape_surface_->w != w || shape_surface_->h != h) {
         if (shape_surface_) {
             SDL_DestroySurface(shape_surface_);
@@ -462,58 +647,69 @@ void App::update_click_through(float dt) {
         SDL_FillSurfaceRect(shape_surface_, &shape_prev_, 0);
         shape_prev_valid_ = false;
     }
-
-    SDL_Surface *src = character_.current_source_surface();
-    if (!src) {
-        return;
-    }
-
-    SDL_Rect dst{static_cast<int>(pet_.x() - character_.frame_width() * 0.5f),
-                 static_cast<int>(pet_.y() - character_.frame_height() * 0.5f),
-                 frame_rect.w, frame_rect.h};
     SDL_SetSurfaceBlendMode(shape_surface_, SDL_BLENDMODE_NONE);
-    SDL_BlitSurface(src, &frame_rect, shape_surface_, &dst);
 
-    SDL_Rect content = dst;
-
-    // Composite UI panels into the silhouette so they are visible and
-    // interactive on platforms where SDL masks the whole output by the shape
-    // (Wayland/macOS), and included in the native input region (X11/Win32).
-    auto add_rect = [&](SDL_FRect r) {
-        SDL_Rect ir{static_cast<int>(r.x), static_cast<int>(r.y),
-                    static_cast<int>(r.w + 0.5f), static_cast<int>(r.h + 0.5f)};
-        SDL_FillSurfaceRect(shape_surface_, &ir, 0xFFFFFFFFu);
-        const int x0 = std::min(content.x, ir.x);
-        const int y0 = std::min(content.y, ir.y);
-        const int x1 = std::max(content.x + content.w, ir.x + ir.w);
-        const int y1 = std::max(content.y + content.h, ir.y + ir.h);
+    SDL_Rect content{0, 0, 0, 0};
+    bool have_content = false;
+    auto union_rect = [&](const SDL_Rect &r) {
+        if (!have_content) {
+            content = r;
+            have_content = true;
+            return;
+        }
+        const int x0 = std::min(content.x, r.x);
+        const int y0 = std::min(content.y, r.y);
+        const int x1 = std::max(content.x + content.w, r.x + r.w);
+        const int y1 = std::max(content.y + content.h, r.y + r.h);
         content = SDL_Rect{x0, y0, x1 - x0, y1 - y0};
     };
 
-    const float bubble_bottom = pet_.y() - character_.frame_height() * 0.5f - 6.0f;
-    if (dialogue_.alpha() > 0.01f) {
-        add_rect(dialogue_.bubble_rect(pet_.x(), bubble_bottom));
+    // Blit each active pet's current frame into the silhouette.
+    for (std::size_t i = 0; i < pets_.size(); ++i) {
+        PetInstance &pet = *pets_[i];
+        if (!pet.active) {
+            continue;
+        }
+        SDL_Surface *src = pet.character.current_source_surface();
+        if (!src) {
+            continue;
+        }
+        SDL_Rect frame_rect = pet.character.current_frame_rect();
+        SDL_Rect dst{static_cast<int>(pet.pet.x() - pet.character.frame_width() * 0.5f),
+                     static_cast<int>(pet.pet.y() - pet.character.frame_height() * 0.5f),
+                     frame_rect.w, frame_rect.h};
+        SDL_BlitSurface(src, &frame_rect, shape_surface_, &dst);
+        union_rect(dst);
+
+        if (pet.dialogue.alpha() > 0.01f) {
+            const SDL_FRect bubble = pet.dialogue.bubble_rect(
+                pet.pet.x(), pet.pet.y() - pet.character.frame_height() * 0.5f - 6.0f);
+            SDL_Rect ir{static_cast<int>(bubble.x), static_cast<int>(bubble.y),
+                        static_cast<int>(bubble.w + 0.5f), static_cast<int>(bubble.h + 0.5f)};
+            SDL_FillSurfaceRect(shape_surface_, &ir, 0xFFFFFFFFu);
+            union_rect(ir);
+        }
+
+        pet.shape_anim = pet.character.current_animation();
+        pet.shape_frame = pet.character.current_frame_index();
+        pet.shape_x = pet.pet.x();
+        pet.shape_y = pet.pet.y();
     }
+
+    // Menu panels are always interactive.
     if (menu_.visible()) {
         for (const SDL_Rect &r : menu_.interactive_rects()) {
-            add_rect(SDL_FRect{static_cast<float>(r.x), static_cast<float>(r.y),
-                               static_cast<float>(r.w), static_cast<float>(r.h)});
+            SDL_FillSurfaceRect(shape_surface_, &r, 0xFFFFFFFFu);
+            union_rect(r);
         }
     }
 
-    shape_native_ = platform::apply_window_shape(window_.handle(), shape_surface_, content);
-    if (std::getenv("DVP_DEBUG_SHAPE")) {
-        DVP_INFO("shape: anim=%s frame=%d native=%d content=%d,%d %dx%d",
-                character_.current_animation().c_str(), frame, shape_native_ ? 1 : 0,
-                content.x, content.y, content.w, content.h);
+    if (!have_content) {
+        return;
     }
+    shape_native_ = platform::apply_window_shape(window_.handle(), shape_surface_, content);
     shape_prev_ = content;
     shape_prev_valid_ = true;
-
-    shape_anim_ = character_.current_animation();
-    shape_frame_ = frame;
-    shape_pet_x_ = pet_.x();
-    shape_pet_y_ = pet_.y();
 }
 
 void App::shutdown() {
@@ -524,7 +720,10 @@ void App::shutdown() {
     }
     // Textures must be released while the renderer is still alive.
     ui_text_.unload();
-    character_.unload();
+    for (auto &pet : pets_) {
+        pet->character.unload();
+    }
+    pets_.clear();
     TTF_Quit();
     window_.destroy();
     SDL_Quit();

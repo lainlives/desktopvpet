@@ -31,7 +31,9 @@ src/
 assets/characters/ecto/ # runtime character (generated sheets + character.json)
 assets/fonts/           # bundled DejaVuSans.ttf for dialogue/menu text
 tools/pack_sprites.py   # packs source frames into one sheet per activity
+editor/                 # wxWidgets character authoring GUI (separate binary)
 docs/CHARACTERS.md      # character file / manifest / role reference
+docs/EDITOR.md          # character editor overview
 DesktopEcto/            # original Godot project (reference, untouched)
 sdl/SDL, sdl/SDL_image, sdl/SDL_ttf   # git submodules
 ```
@@ -45,6 +47,11 @@ sdl/SDL, sdl/SDL_image, sdl/SDL_ttf   # git submodules
   `freetype-devel harfbuzz-devel`).
 - `wayland-client` dev files (optional; enables Wayland per-pixel
   click-through — Debian/Ubuntu `libwayland-dev`, Fedora `wayland-devel`).
+- wxWidgets (optional; builds the character editor). Either the system dev
+  packages (Debian/Ubuntu `libwxgtk3.2-dev`, Fedora `wxGTK-devel`) **or** the
+  vendored `wxWidgets/` submodule:
+  `git submodule update --init wxWidgets && git -C wxWidgets submodule update --init --depth 1 3rdparty/pcre 3rdparty/nanosvg`
+  (STC is disabled, so its scintilla/lexilla submodules aren't needed).
 - Initialize submodules, including SDL_image's bundled codecs:
 
 ```sh
@@ -98,6 +105,30 @@ MinGW builds work from the same project; the Win32 click-through uses
 The Windows binary has been smoke-tested under Wine (`DVP_SELFTEST=1` renders the
 pet, dialogue text and menu).
 
+## Character editor
+
+A separate cross-platform GUI (`desktop_vpet_editor`, wxWidgets) authors
+character directories: global attributes, dialogue, animation clips, role/weight
+mapping, an animated preview with drag-to-slice, and a **Pack Sprites** button
+that regenerates the runtime sheets + `character.json`.
+
+```sh
+cmake --build build --target desktop_vpet_editor
+build/bin/desktop_vpet_editor
+```
+
+Options:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `-DDESKTOPVPET_BUILD_EDITOR` | `ON` native / `OFF` cross | Build the editor |
+| `-DDESKTOPVPET_USE_SYSTEM_WX` | `ON` | Prefer system wxWidgets; `OFF` builds the vendored static submodule |
+
+Cross (Windows) builds must opt in with `-DDESKTOPVPET_BUILD_EDITOR=ON`; they use
+the vendored wxWidgets, which additionally needs its bundled third-party
+submodules (`src/zlib`, `src/png`, `src/expat`, `src/tiff`, `src/jpeg`) and is a
+large build. See [`docs/EDITOR.md`](docs/EDITOR.md).
+
 ## Run
 
 ```sh
@@ -116,6 +147,7 @@ pet, dialogue text and menu).
   - `DVP_DEBUG_SHAPE=1` logs each silhouette update (anim/frame/position).
   - `DVP_DEBUG_ROLE=1` logs every semantic role -> clip change.
   - `DVP_TALK=1` keeps a dialogue bubble active (to exercise the talk role).
+  - `DVP_ALL=1` activates every detected character at startup.
   - `DVP_SELFTEST=1` renders one frame offscreen, logs the opaque pixel count and exits.
   - `DVP_EXIT_AFTER=<seconds>` quits automatically (used by tests).
 
@@ -126,6 +158,13 @@ and one or more sheets. Animations can each point at their own sheet (one sheet
 per activity), share an atlas, or use loose images, and an `actions` block maps
 semantic roles (`idle`, `walk`, `clicked`, `fall_impact`, `spinny`, `dance`,
 `talk`) to clips with weighted variants and sensible fallbacks.
+
+**Multiple characters:** every folder under `assets/characters/` with a
+`character.json` is detected at startup. If more than one is found, the
+right-click menu gains a **Characters** submenu that shows/hides each pet
+(multi-select). The initial character is the `[character]` argument (default the
+first alphabetically); the window title becomes `Desktop <name>` (or the list of
+active names).
 
 **See [`docs/CHARACTERS.md`](docs/CHARACTERS.md) for the full format, the role
 table, the authoring workflow (`sources.json` + `tools/pack_sprites.py`) and an
@@ -195,8 +234,11 @@ Done:
 - Silhouette-based click-through (X11/Win32/macOS) and hover hit-testing.
 - SDL_ttf dialogue text (wrapped, centred, cached) with a bundled font.
 - Right-click popup menu (Exit / Force-sort submenu) with checkmarks.
-- Right-click popup menu (Exit / Force-sort submenu) with checkmarks; its input
-  region is unioned with the pet's silhouette so it stays clickable.
+- Right-click popup menu (Exit / Force-sort / Characters submenu) with
+  checkmarks; its input region is unioned with the pets' silhouettes.
+- Multiple characters: every `assets/characters/*/character.json` is loaded and
+  can be shown/hidden from the Characters submenu; the input region and rendering
+  cover all active pets.
 - Z-order control: Top/Disabled via SDL, Bottom via X11 `XLowerWindow` /
   Win32 `SetWindowPos(HWND_BOTTOM)`.
 - Window spans the union of all displays (multi-monitor on X11); on Wayland the

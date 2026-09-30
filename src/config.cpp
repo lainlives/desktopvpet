@@ -3,6 +3,7 @@
 
 #include <cctype>
 #include <cstdlib>
+#include <cstdio>
 #include <fstream>
 #include <sstream>
 
@@ -335,6 +336,114 @@ Json load_json_file(const std::string &path, std::string *error) {
     std::ostringstream buffer;
     buffer << file.rdbuf();
     return parse_json(buffer.str(), error);
+}
+
+namespace {
+
+void encode_string(const std::string &s, std::string &out) {
+    out.push_back('"');
+    for (unsigned char c : s) {
+        switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\";  break;
+            case '\n': out += "\\n";  break;
+            case '\r': out += "\\r";  break;
+            case '\t': out += "\\t";  break;
+            default:
+                if (c < 0x20) {
+                    char buf[8];
+                    std::snprintf(buf, sizeof(buf), "\\u%04x", c);
+                    out += buf;
+                } else {
+                    out.push_back(static_cast<char>(c));
+                }
+        }
+    }
+    out.push_back('"');
+}
+
+void indent_to(std::string &out, int indent, int depth) {
+    if (indent > 0) {
+        out.push_back('\n');
+        out.append(static_cast<std::size_t>(indent) * depth, ' ');
+    }
+}
+
+void encode_value(const Json &v, std::string &out, int indent, int depth) {
+    switch (v.type) {
+        case Json::Type::Null:
+            out += "null";
+            break;
+        case Json::Type::Bool:
+            out += v.boolean ? "true" : "false";
+            break;
+        case Json::Type::Number: {
+            if (v.number == static_cast<double>(static_cast<long long>(v.number))) {
+                out += std::to_string(static_cast<long long>(v.number));
+            } else {
+                char buf[64];
+                std::snprintf(buf, sizeof(buf), "%g", v.number);
+                out += buf;
+            }
+            break;
+        }
+        case Json::Type::String:
+            encode_string(v.string, out);
+            break;
+        case Json::Type::Array: {
+            out.push_back('[');
+            for (std::size_t i = 0; i < v.array.size(); ++i) {
+                if (i) {
+                    out.push_back(',');
+                }
+                indent_to(out, indent, depth + 1);
+                encode_value(v.array[i], out, indent, depth + 1);
+            }
+            if (!v.array.empty()) {
+                indent_to(out, indent, depth);
+            }
+            out.push_back(']');
+            break;
+        }
+        case Json::Type::Object: {
+            out.push_back('{');
+            std::size_t i = 0;
+            for (const auto &kv : v.object) {
+                if (i++) {
+                    out.push_back(',');
+                }
+                indent_to(out, indent, depth + 1);
+                encode_string(kv.first, out);
+                out += indent > 0 ? ": " : ":";
+                encode_value(kv.second, out, indent, depth + 1);
+            }
+            if (!v.object.empty()) {
+                indent_to(out, indent, depth);
+            }
+            out.push_back('}');
+            break;
+        }
+    }
+}
+
+}  // namespace
+
+std::string encode_json(const Json &value, int indent) {
+    std::string out;
+    encode_value(value, out, indent, 0);
+    return out;
+}
+
+bool save_json_file(const std::string &path, const Json &value, std::string *error) {
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    if (!file) {
+        if (error) {
+            *error = "cannot write file: " + path;
+        }
+        return false;
+    }
+    file << encode_json(value) << '\n';
+    return static_cast<bool>(file);
 }
 
 }  // namespace dvp

@@ -93,13 +93,18 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
+# Shared JSON reader/writer (used by the app and the editor)
+# ---------------------------------------------------------------------------
+add_library(dvp_json STATIC src/config.cpp)
+target_include_directories(dvp_json PUBLIC src)
+
+# ---------------------------------------------------------------------------
 # Application
 # ---------------------------------------------------------------------------
 add_executable(desktop_vpet
     src/main.cpp
     src/app.cpp
     src/window.cpp
-    src/config.cpp
     src/texture.cpp
     src/animator.cpp
     src/character.cpp
@@ -112,6 +117,7 @@ add_executable(desktop_vpet
 
 target_include_directories(desktop_vpet PRIVATE src)
 target_link_libraries(desktop_vpet PRIVATE
+    dvp_json
     ${DESKTOPVPET_SDL_TARGET}
     ${DESKTOPVPET_SDLIMG_TARGET}
     ${DESKTOPVPET_SDLTTF_TARGET}
@@ -180,4 +186,80 @@ endif()
 if(WIN32)
     # CreateRectRgn/CombineRgn/SetWindowRgn live in gdi32.
     target_link_libraries(desktop_vpet PRIVATE gdi32 user32)
+endif()
+
+# ---------------------------------------------------------------------------
+# Character editor (wxWidgets; optional)
+#
+# wxWidgets source selection:
+#   * system   - fast; used by default when found (native builds only).
+#   * vendored - the wxWidgets/ submodule; used for cross builds, when the
+#                system library is missing, or with -DDESKTOPVPET_USE_SYSTEM_WX=OFF.
+# Vendored builds are static (self-contained executable).
+# ---------------------------------------------------------------------------
+# The editor is on by default for native builds; cross builds must opt in
+# (a vendored wxWidgets cross build is large and needs its bundled submodules).
+if(CMAKE_CROSSCOMPILING)
+    option(DESKTOPVPET_BUILD_EDITOR "Build the wxWidgets character editor" OFF)
+else()
+    option(DESKTOPVPET_BUILD_EDITOR "Build the wxWidgets character editor" ON)
+endif()
+option(DESKTOPVPET_USE_SYSTEM_WX "Prefer system wxWidgets over the vendored submodule" ON)
+
+if(DESKTOPVPET_BUILD_EDITOR)
+    set(DVP_WX_TARGETS "")
+    set(DVP_WX_SOURCE "")
+
+    if(DESKTOPVPET_USE_SYSTEM_WX AND NOT CMAKE_CROSSCOMPILING)
+        find_package(wxWidgets QUIET COMPONENTS core base)
+        if(wxWidgets_FOUND)
+            include(${wxWidgets_USE_FILE})
+            set(DVP_WX_TARGETS ${wxWidgets_LIBRARIES})
+            set(DVP_WX_SOURCE "system")
+        endif()
+    endif()
+
+    if(DVP_WX_TARGETS STREQUAL "" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/wxWidgets/CMakeLists.txt")
+        set(wxBUILD_SHARED    OFF CACHE BOOL "" FORCE)
+        set(wxBUILD_MONOLITHIC OFF CACHE BOOL "" FORCE)
+        set(wxBUILD_SAMPLES   OFF CACHE BOOL "" FORCE)
+        set(wxBUILD_TESTS     OFF CACHE BOOL "" FORCE)
+        set(wxBUILD_DEMOS     OFF CACHE BOOL "" FORCE)
+        set(wxBUILD_INSTALL   OFF CACHE BOOL "" FORCE)
+        set(wxBUILD_PRECOMP   ON  CACHE BOOL "" FORCE)
+        # STC needs wxWidgets' nested scintilla/lexilla submodules; not needed
+        # for the editor, so skip it (keeps the vendored checkout self-contained).
+        set(wxUSE_STC          OFF CACHE BOOL "" FORCE)
+        add_subdirectory(wxWidgets EXCLUDE_FROM_ALL)
+        set(DVP_WX_TARGETS wx::core wx::base)
+        set(DVP_WX_SOURCE "vendored")
+    endif()
+
+    if(NOT DVP_WX_TARGETS STREQUAL "")
+        add_executable(desktop_vpet_editor
+            editor/main.cpp
+            editor/editor_frame.cpp
+            editor/character_model.cpp
+            editor/preview_panel.cpp
+        )
+        target_include_directories(desktop_vpet_editor PRIVATE src editor)
+        target_compile_definitions(desktop_vpet_editor PRIVATE
+            DVP_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+        target_link_libraries(desktop_vpet_editor PRIVATE dvp_json ${DVP_WX_TARGETS})
+        if(MSVC)
+            target_compile_options(desktop_vpet_editor PRIVATE /W4 /permissive-)
+        else()
+            target_compile_options(desktop_vpet_editor PRIVATE -Wall -Wextra -Wpedantic)
+        endif()
+        if(MINGW)
+            # Self-contained editor on Windows.
+            target_link_options(desktop_vpet_editor PRIVATE
+                -static-libgcc -static-libstdc++ -static)
+        endif()
+        message(STATUS "Character editor: enabled (${DVP_WX_SOURCE} wxWidgets)")
+    else()
+        message(STATUS
+            "Character editor: disabled (wxWidgets not found; run "
+            "'git submodule update --init wxWidgets' for the vendored build)")
+    endif()
 endif()

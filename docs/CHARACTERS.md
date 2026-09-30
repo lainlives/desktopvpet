@@ -7,6 +7,13 @@ Swapping characters is just a matter of pointing the app at a different folder:
 build/bin/desktop_vpet assets/characters/ecto
 ```
 
+**Multiple characters.** Every folder under `assets/characters/` that contains a
+`character.json` is detected at startup. When more than one is present, the
+right-click menu gains a **Characters** submenu listing them with checkmarks;
+each entry independently shows/hides that pet (multi-select, at least one stays
+visible). The `[character]` argument only sets which one starts active. The
+input region and rendering include every active pet.
+
 Layout of a character folder:
 
 ```

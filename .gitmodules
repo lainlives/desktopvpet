@@ -7,3 +7,6 @@
 [submodule "sdl/SDL_ttf"]
 	path = sdl/SDL_ttf
 	url = https://github.com/libsdl-org/SDL_ttf
+[submodule "wxWidgets"]
+	path = wxWidgets
+	url = https://github.com/wxWidgets/wxWidgets
