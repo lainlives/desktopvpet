@@ -1,0 +1,30 @@
+{
+  "name": "Ecto",
+  "frame_width": 112,
+  "frame_height": 112,
+  "src_dir": "src",
+  "dialogue": [
+    "im normal im normal im normal",
+    "*explodes u*",
+    "*zombie rat noises*"
+  ],
+  "actions": {
+    "idle": [
+      { "animation": "idle", "weight": 4 },
+      { "animation": "idle_look", "weight": 1 }
+    ],
+    "walk": { "animation": "walk" },
+    "clicked": { "animation": "hover" },
+    "spinny": { "animation": "spinny" },
+    "dance": { "animation": "dancydance" },
+    "talk": { "animation": "hover" }
+  },
+  "animations": {
+    "idle":       { "fps": 5,  "loop": true, "images": ["idle.png"] },
+    "idle_look":  { "fps": 2,  "loop": true, "images": ["walk1.png"] },
+    "hover":      { "fps": 5,  "loop": true, "images": ["shocked.png"] },
+    "spinny":     { "fps": 5,  "loop": true, "images": ["spinny1.png"] },
+    "walk":       { "fps": 2,  "loop": true, "images": ["walk1.png", "walk2.png"] },
+    "dancydance": { "fps": 10, "loop": true, "atlas": "test2.png", "cols": 3, "frames": 8 }
+  }
+}
